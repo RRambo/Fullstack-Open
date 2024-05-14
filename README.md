@@ -1,2 +1,2 @@
 # Fullstack-Open
-Fullstack Open kurssi (osat 1-5)
+Fullstack Open kurssi (osat 0-5)
