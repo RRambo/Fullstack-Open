@@ -1,0 +1,9 @@
+POST http://localhost:3003/api/blogs
+content-type: application/json
+
+{
+    "title": "Design for Mankind",
+    "author": "Erin Loechner",
+    "url": "https://designformankind.com/2024/05/giving-ourselves-what-technology-cant/",
+    "likes": 0
+}
