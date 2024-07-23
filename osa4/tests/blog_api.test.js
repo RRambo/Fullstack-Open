@@ -1,10 +1,12 @@
 const { test, after, beforeEach, describe } = require('node:test')
 const Blog = require('../models/blog')
+const User = require('../models/user')
 const mongoose = require('mongoose')
 const supertest = require('supertest')
 const app = require('../app')
 const assert = require('node:assert')
 const helper = require('./test_helper')
+const bcrypt = require('bcryptjs')
 
 const api = supertest(app)
 
@@ -158,6 +160,123 @@ describe('editing or updating a blog', () => {
 
         assert(likes.includes(100))
         assert(titles.includes('updated blog'))
+    })
+})
+
+describe('adding a user', () => {
+    beforeEach(async () => {
+        await User.deleteMany({})
+
+        const passwordHash = await bcrypt.hash('sekret', 10)
+        const user = new User({ username: 'root', passwordHash })
+
+        await user.save()
+    })
+
+    test('succeeds with valid data', async () => {
+        const UsersAtStart = await helper.usersInDb()
+
+        const newUser = {
+            username: 'Matti',
+            name: 'Matti Meikäläinen',
+            password: 'Salasana',
+        }
+
+        await api
+            .post('/api/users')
+            .send(newUser)
+            .expect(201)
+            .expect('Content-Type', /application\/json/)
+
+        const usersAtEnd = await helper.usersInDb()
+        assert.strictEqual(usersAtEnd.length, UsersAtStart.length + 1)
+
+        const usernames = usersAtEnd.map(u => u.username)
+        assert(usernames.includes(newUser.username))
+    })
+
+    test('fails with proper statuscode and message if username is taken', async () => {
+        const UsersAtStart = await helper.usersInDb()
+
+        const duplicateUser = {
+            username: 'root',
+            name: 'Superuser',
+            password: 'salasana',
+        }
+
+        const duplicateResult = await api
+            .post('/api/users')
+            .send(duplicateUser)
+            .expect(400)
+            .expect('Content-Type', /application\/json/)
+
+        const usersAtEnd = await helper.usersInDb()
+        assert(duplicateResult.body.error.includes('expected `username` to be unique'))
+
+        assert.strictEqual(usersAtEnd.length, UsersAtStart.length)
+    })
+
+    test('fails with proper statuscode and message if username or password is too short', async () => {
+        const UsersAtStart = await helper.usersInDb()
+        const userWithWrongUsername = {
+            username: 'gr',
+            name: 'Superuser',
+            password: 'salasana',
+        }
+
+        const userWithWrongPassword = {
+            username: 'Levy',
+            name: 'Bank',
+            password: 'sa',
+        }
+
+        const WrongUsernameResult = await api
+            .post('/api/users')
+            .send(userWithWrongUsername)
+            .expect(400)
+            .expect('Content-Type', /application\/json/)
+
+        const WrongPasswordResult = await api
+            .post('/api/users')
+            .send(userWithWrongPassword)
+            .expect(400)
+            .expect('Content-Type', /application\/json/)
+
+        const usersAtEnd = await helper.usersInDb()
+
+        assert(WrongUsernameResult.body.error.includes('User validation failed: username: Path `username` (`gr`) is shorter than the minimum allowed length (3).'))
+        assert(WrongPasswordResult.body.error.includes('password needs to be at least 3 characters'))
+
+        assert.strictEqual(usersAtEnd.length, UsersAtStart.length)
+    })
+
+    test('fails properly if username or password fields are missing', async () => {
+        const UsersAtStart = await helper.usersInDb()
+        const noUsername = {
+            name: 'Ville Vallaton',
+            password: 'salasana',
+        }
+
+        const noUsernameResult = await api
+            .post('/api/users')
+            .send(noUsername)
+            .expect(400)
+
+        const noPassword = {
+            username: 'LasiKukko',
+            name: 'Lassi',
+        }
+
+        const noPasswordResult = await api
+            .post('/api/users')
+            .send(noPassword)
+            .expect(400)
+
+        const usersAtEnd = await helper.usersInDb()
+
+        assert(noUsernameResult.body.error.includes('User validation failed: username: Path `username` is required.'))
+        assert(noPasswordResult.body.error.includes('password required'))
+        assert.strictEqual(UsersAtStart.length, usersAtEnd.length)
     })
 })
 
