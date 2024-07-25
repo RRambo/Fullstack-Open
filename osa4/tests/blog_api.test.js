@@ -11,6 +11,13 @@ const bcrypt = require('bcryptjs')
 const api = supertest(app)
 
 beforeEach(async () => {
+    await User.deleteMany({})
+
+    const passwordHash = await bcrypt.hash('sekret', 10)
+    const user = new User({ username: 'root', passwordHash })
+
+    await user.save()
+
     await Blog.deleteMany({})
     await Blog.insertMany(helper.initialBlogs)
 })
@@ -40,9 +47,20 @@ test('id field is named correctly', async () => {
 
 describe('adding a blog', () => {
     test('succeeds with valid data', async () => {
+        const login = {
+            username: 'root',
+            password: 'sekret'
+        }
+
+        const userResponse = await api.post('/api/login')
+            .send(login)
+            .expect(200)
+            .expect('Content-Type', /application\/json/)
+
         const newBlog = {
             title: 'a new blog',
             author: 'myself',
+            user: userResponse.body.id,
             url: 'no url',
             likes: 0,
         }
@@ -50,6 +68,7 @@ describe('adding a blog', () => {
         await api
             .post('/api/blogs')
             .send(newBlog)
+            .set('Authorization', `Bearer ${userResponse.body.token}`)
             .expect(201)
             .expect('Content-Type', /application\/json/)
 
@@ -63,16 +82,29 @@ describe('adding a blog', () => {
     })
 
     test('makes likes 0 if the field is empty', async () => {
+        const login = {
+            username: 'root',
+            password: 'sekret'
+        }
+
+        const userResponse = await api.post('/api/login')
+            .send(login)
+            .expect(200)
+            .expect('Content-Type', /application\/json/)
+
         const newBlog = {
             title: 'a new blog',
             author: 'myself',
+            user: userResponse.body.id,
             url: 'no url',
         }
 
         await api
             .post('/api/blogs')
             .send(newBlog)
+            .set('Authorization', `Bearer ${userResponse.body.token}`)
             .expect(201)
+            .expect('Content-Type', /application\/json/)
 
         const newBlogs = await helper.blogsInDb()
         const savedBlog = newBlogs.find((blog) => blog.title === 'a new blog')
@@ -81,61 +113,180 @@ describe('adding a blog', () => {
     })
 
     test('fails if title or url field is missing', async () => {
+        const login = {
+            username: 'root',
+            password: 'sekret'
+        }
+
+        const userResponse = await api.post('/api/login')
+            .send(login)
+            .expect(200)
+            .expect('Content-Type', /application\/json/)
+
         const blogWithNoUrl = {
             title: 'a new blog',
             author: 'myself',
+            user: userResponse.body.id,
             likes: 0,
         }
 
-        await api
+        const noUrlPost = await api
             .post('/api/blogs')
             .send(blogWithNoUrl)
+            .set('Authorization', `Bearer ${userResponse.body.token}`)
             .expect(400)
 
         const blogWithNoTitle = {
             author: 'myself',
+            user: userResponse.body.id,
             url: 'www.blog.fi',
             likes: 0,
         }
 
-        await api
+        const noTitlePost = await api
             .post('/api/blogs')
             .send(blogWithNoTitle)
+            .set('Authorization', `Bearer ${userResponse.body.token}`)
             .expect(400)
 
         const response = await api.get('/api/blogs')
 
         assert.strictEqual(response.body.length, helper.initialBlogs.length)
+        assert(noUrlPost.body.error.includes('Blog validation failed: url: Path `url` is required.'))
+        assert(noTitlePost.body.error.includes('Blog validation failed: title: Path `title` is required.'))
+    })
+
+    test('fails with statuscode 401 if there is no token', async () => {
+        const login = {
+            username: 'root',
+            password: 'sekret'
+        }
+
+        const userResponse = await api.post('/api/login')
+            .send(login)
+            .expect(200)
+            .expect('Content-Type', /application\/json/)
+
+        const blogsAtStart = await api.get('/api/blogs')
+
+        const newBlog = {
+            title: 'a new blog',
+            author: 'myself',
+            user: userResponse.body.id,
+            url: 'no url',
+            likes: 0,
+        }
+
+        await api
+            .post('/api/blogs')
+            .send(newBlog)
+            .expect(401)
+
+        const blogsAtEnd = await api.get('/api/blogs')
+
+        assert.strictEqual(blogsAtEnd.body.length, blogsAtStart.body.length)
     })
 })
 
 describe('deleting a blog', () => {
     test('succeeds with status code 204 if id is valid', async () => {
-        const blogsAtStart = await helper.blogsInDb()
-        const blogToDelete = blogsAtStart[0]
+        const login = {
+            username: 'root',
+            password: 'sekret'
+        }
+
+        const userResponse = await api.post('/api/login')
+            .send(login)
+            .expect(200)
+            .expect('Content-Type', /application\/json/)
+
+        const newBlog = {
+            title: 'a new blog',
+            author: 'myself',
+            user: userResponse.body.id,
+            url: 'no url',
+            likes: 0,
+        }
+
+        const blogToDelete = await api
+            .post('/api/blogs')
+            .send(newBlog)
+            .set('Authorization', `Bearer ${userResponse.body.token}`)
+            .expect(201)
+            .expect('Content-Type', /application\/json/)
+
+        const blogsAtStart = await api.get('/api/blogs')
 
         await api
-            .delete(`/api/blogs/${blogToDelete.id}`)
+            .delete(`/api/blogs/${blogToDelete.body.id}`)
+            .set('Authorization', `Bearer ${userResponse.body.token}`)
             .expect(204)
 
-        const blogsAtEnd = await helper.blogsInDb()
+        const blogsAtEnd = await api.get('/api/blogs')
 
-        assert.strictEqual(blogsAtEnd.length, helper.initialBlogs.length - 1)
+        assert.strictEqual(blogsAtEnd.body.length, blogsAtStart.body.length - 1)
 
-        const title = blogsAtEnd.map(r => r.title)
+        const title = blogsAtEnd.body.map(r => r.title)
         assert(!title.includes(blogToDelete.title))
     })
 
-    test('fails with statuscode 404 if blog does not exist', async () => {
-        const validNonexistingId = await helper.nonExistingId()
+    test('fails with status code 401 if blog was not posted by me', async () => {
+        const firstLogin = {
+            username: 'root',
+            password: 'sekret'
+        }
 
-        await api
-            .get(`/api/blogs/${validNonexistingId}`)
-            .expect(404)
+        const firstUserResponse = await api.post('/api/login')
+            .send(firstLogin)
+            .expect(200)
+            .expect('Content-Type', /application\/json/)
+
+        const newBlog = {
+            title: 'a new blog',
+            author: 'myself',
+            user: firstUserResponse.body.id,
+            url: 'no url',
+            likes: 0,
+        }
+
+        const blogToDelete = await api
+            .post('/api/blogs')
+            .send(newBlog)
+            .set('Authorization', `Bearer ${firstUserResponse.body.token}`)
+            .expect(201)
+            .expect('Content-Type', /application\/json/)
+
+        const blogsAtStart = await api.get('/api/blogs')
+
+        const passwordHash = await bcrypt.hash('salasana', 10)
+        const user = new User({ username: 'test', passwordHash })
+
+        await user.save()
+
+        const actualLogin = {
+            username: 'test',
+            password: 'salasana'
+        }
+
+        const actualUserResponse = await api.post('/api/login')
+            .send(actualLogin)
+            .expect(200)
+            .expect('Content-Type', /application\/json/)
+
+        const response = await api
+            .delete(`/api/blogs/${blogToDelete.body.id}`)
+            .set('Authorization', `Bearer ${actualUserResponse.body.token}`)
+            .expect(401)
+
+        const blogsAtEnd = await api.get('/api/blogs')
+
+        assert.strictEqual(blogsAtEnd.body.length, blogsAtStart.body.length)
+
+        assert(response.body.error.includes('incorrect token'))
     })
 })
 
-describe('editing or updating a blog', () => {
+describe('updating a blog', () => {
     test('succeeds with valid data', async () => {
         const blogsAtStart = await helper.blogsInDb()
         const blogToUpdate = blogsAtStart[0]
@@ -164,15 +315,6 @@ describe('editing or updating a blog', () => {
 })
 
 describe('adding a user', () => {
-    beforeEach(async () => {
-        await User.deleteMany({})
-
-        const passwordHash = await bcrypt.hash('sekret', 10)
-        const user = new User({ username: 'root', passwordHash })
-
-        await user.save()
-    })
-
     test('succeeds with valid data', async () => {
         const UsersAtStart = await helper.usersInDb()
 

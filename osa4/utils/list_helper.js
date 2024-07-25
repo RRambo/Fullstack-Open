@@ -43,7 +43,7 @@ const mostLikes = (blogs) => {
         return result
     }, {})
     /*
-    authors on nyt muotoa {
+    authors format is now {
         'Michael Chan': [ 7 ],
         'Edsger W. Dijkstra': [ 5, 12 ],
         'Robert C. Martin': [ 10, 0, 2 ]
