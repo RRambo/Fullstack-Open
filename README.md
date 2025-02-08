@@ -5,7 +5,7 @@ Fullstack Open kurssi (osat 0-5)
 JavaScript, React, Node.js, REST API, HTML  
 kirjastot: express, mongoose, axios  
 End To End testaus toteutettu Playwrightilla
-# Osassa 3 tehty puhelinluettelo (backend): 
+# Osassa 3 tehty puhelinluettelo (backend) 
 https://fullstack-open-osa3-puhelinluettelo.onrender.com
 
 # materiaali
