@@ -2,7 +2,7 @@
 Fullstack Open kurssi (osat 0-5)
 
 # käytetyt teknologiat
-JavaScript, React, Node.js, REST API, HTML  
+React.js, Node.js, REST API, HTML  
 kirjastot: express, mongoose, axios  
 End To End testaus toteutettu Playwrightilla
 # Osassa 3 tehty puhelinluettelo (backend) 
