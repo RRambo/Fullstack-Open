@@ -32,10 +32,7 @@ blogsRouter.delete('/:id', middleware.userExtractor, async (request, response) =
     const user = request.user
 
     const blog = await Blog.findById(request.params.id)
-    /*
-    console.log(`blogCreatorId: ${blog.user}`)
-    console.log(`userId: ${user._id.toString()}`)
-    */
+
     if (blog.user.toString() === user._id.toString()) {
         await Blog.findByIdAndDelete(request.params.id)
     } else {
